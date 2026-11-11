@@ -1,0 +1,21 @@
+[Unit]
+Description=Relay AHP Fleet Console
+After=network.target ahpd.service
+Wants=ahpd.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ai-relay
+ExecStart=/usr/bin/node %h/ai-relay/src/serve.mjs
+Environment=PORT=4200
+Environment=HOST=0.0.0.0
+Environment=RELAY_DEMO_BOOTSTRAP_FILE=%h/ai-relay/.local/demo/bootstrap.json
+Environment=RELAY_DEMO_TOKEN_FILE=%h/ai-relay/.local/demo/connection-token
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
