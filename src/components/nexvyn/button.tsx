@@ -5,10 +5,7 @@
 import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { animate, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
-import { springs } from '@/lib/motion-tokens'
-import { playClickSound, playHoverSound } from '@/lib/sound'
 
 export const buttonVariants = cva(
   [
@@ -33,11 +30,11 @@ export const buttonVariants = cva(
           'bg-(--color-error) text-(--color-bg) hover:bg-(--color-error)/90 focus-visible:ring-(--color-error)',
       },
       size: {
-        sm: 'min-h-6 px-3 text-xs',
-        md: 'min-h-8 px-4 text-sm',
+        sm: 'min-h-7 px-3 text-xs',
+        md: 'min-h-11 px-4 text-sm',
         lg: 'min-h-12 px-5 text-base',
-        'icon-sm': 'size-6 shrink-0 p-0',
-        icon: 'size-8 shrink-0 p-0',
+        'icon-sm': 'size-7 shrink-0 p-0',
+        icon: 'size-11 shrink-0 p-0',
         'icon-lg': 'size-12 shrink-0 p-0',
       },
     },
@@ -123,11 +120,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       type = 'button',
       tabIndex,
       onClick,
-      onPointerDown,
-      onPointerUp,
-      onPointerCancel,
-      onPointerLeave,
-      onMouseEnter,
       children,
       style,
       'aria-label': ariaLabel,
@@ -135,9 +127,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     forwardedRef,
   ) => {
-    const internalRef = React.useRef<HTMLButtonElement | null>(null)
-    const pressedRef = React.useRef(false)
-    const prefersReducedMotion = useReducedMotion()
     const isDisabled = disabled || loading
     const resolvedVariant =
       destructive && (variant === undefined || variant === 'solid') ? 'destructive' : variant
@@ -151,63 +140,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             : undefined
       : undefined
 
-    const setRefs = React.useCallback(
-      (node: HTMLButtonElement | null) => {
-        internalRef.current = node
-        if (typeof forwardedRef === 'function') {
-          forwardedRef(node)
-        } else if (forwardedRef) {
-          forwardedRef.current = node
-        }
-      },
-      [forwardedRef],
-    )
-
-    const settle = React.useCallback(() => {
-      if (!pressedRef.current) return
-      pressedRef.current = false
-      const element = internalRef.current
-      if (!element) return
-      animate(element, { scale: 1, y: 0 }, { ...springs.settle })
-    }, [])
-
-    const handlePointerDown = React.useCallback(
-      (event: React.PointerEvent<HTMLButtonElement>) => {
-        onPointerDown?.(event)
-        if (event.defaultPrevented || isDisabled || prefersReducedMotion) return
-
-        const element = internalRef.current
-        if (!element) return
-        pressedRef.current = true
-        animate(element, { scale: 0.97, y: 1 }, { ...springs.press })
-      },
-      [onPointerDown, isDisabled, prefersReducedMotion],
-    )
-
-    const handlePointerUp = React.useCallback(
-      (event: React.PointerEvent<HTMLButtonElement>) => {
-        onPointerUp?.(event)
-        settle()
-      },
-      [onPointerUp, settle],
-    )
-
-    const handlePointerCancel = React.useCallback(
-      (event: React.PointerEvent<HTMLButtonElement>) => {
-        onPointerCancel?.(event)
-        settle()
-      },
-      [onPointerCancel, settle],
-    )
-
-    const handlePointerLeave = React.useCallback(
-      (event: React.PointerEvent<HTMLButtonElement>) => {
-        onPointerLeave?.(event)
-        settle()
-      },
-      [onPointerLeave, settle],
-    )
-
     const handleClick = React.useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
         if (isDisabled) {
@@ -215,18 +147,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           event.stopPropagation()
           return
         }
-        playClickSound()
         onClick?.(event)
       },
       [onClick, isDisabled],
-    )
-
-    const handleMouseEnter = React.useCallback(
-      (event: React.MouseEvent<HTMLButtonElement>) => {
-        if (!isDisabled) playHoverSound()
-        onMouseEnter?.(event)
-      },
-      [onMouseEnter, isDisabled],
     )
 
     const loadingContent = (content: React.ReactNode) => (
@@ -249,7 +172,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     return (
       <Comp
-        ref={setRefs}
+        ref={forwardedRef}
         type={asChild ? undefined : type}
         className={cn(
           buttonVariants({ variant: resolvedVariant, size }),
@@ -266,11 +189,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         data-variant={resolvedVariant ?? 'solid'}
         data-size={size ?? 'md'}
         onClick={handleClick}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerLeave}
-        onMouseEnter={handleMouseEnter}
         {...props}
         style={style}
       >

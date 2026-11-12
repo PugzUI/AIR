@@ -18,6 +18,7 @@
     "console:start": "node src/serve.mjs",
     "console:demo": "node scripts/hosts.mjs demo",
     "demo": "node scripts/hosts.mjs demo",
+    "demo:record": "node scripts/record-demo.mjs",
     "console:dev": "node scripts/hosts.mjs dev",
     "console:check": "node scripts/check.mjs",
     "console:test": "node scripts/test.mjs",

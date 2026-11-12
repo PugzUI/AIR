@@ -300,13 +300,15 @@ export function CreateSession({
           defaultValue={host.defaultDirectory || ""}
         />
       </label>
-      <label>
-        <input type="checkbox" name="trustWorkspace" /> Trust this workspace for
-        this browser tab{" "}
-        <small>
-          Allow this agent to load repository instructions and hooks. Only
-          select projects you trust.
-        </small>
+      <label className="field-row">
+        <input type="checkbox" name="trustWorkspace" />
+        <span>
+          Trust this workspace for this browser tab{" "}
+          <small>
+            Allow this agent to load repository instructions and hooks. Only
+            select projects you trust.
+          </small>
+        </span>
       </label>
       <div className="action-row">
         <strong>Host session options</strong>
@@ -320,7 +322,7 @@ export function CreateSession({
         </Button>
       </div>
       {config ? (
-        <div key={generation} className="field-row">
+        <div key={generation} className="config-fields">
           {Object.entries<any>(config.schema?.properties || {}).map(
             ([name, property]) => (
               <ConfigField

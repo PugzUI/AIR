@@ -84,8 +84,8 @@ test("browser runs ACP turns, approvals, cancel, two hosts and restart boundarie
         "Session listing starts collapsed to keep the topology primary");
       assert.equal(await page.locator(".sidebar").getByText("FLEET SUMMARY").count(), 0);
       assert.equal(await page.locator(".sidebar").getByText("No connected hosts. Add an AHP endpoint.").count(), 0);
-      assert.equal(await page.locator(".map-head .topology-keys").count(), 1,
-        "Keys sits at the right of the topology legend divider");
+      assert.equal(await page.locator(".map-head-legend").count(), 0,
+        "Topology bar is clean without redundant status legend");
       assert.equal(await page.locator(".section-head .topology-keys").count(), 0);
       assert.equal(await page.locator(".inspector").count(), 0,
         "An empty inspector must not occupy the shell");
@@ -94,7 +94,7 @@ test("browser runs ACP turns, approvals, cancel, two hosts and restart boundarie
       const mono = await page.locator(".rail-title").evaluate((node) =>
         getComputedStyle(node).fontFamily);
       assert.match(mono, /^"Geist Mono"/);
-      await page.locator(".topology-keys").click();
+      await page.keyboard.press("?");
       assert.equal(await page.locator(".shortcuts-dialog").evaluate((dialog) => dialog.open), true);
       await page.keyboard.press("Escape");
       assert.equal(await page.locator(".shortcuts-dialog").evaluate((dialog) => dialog.open), false);

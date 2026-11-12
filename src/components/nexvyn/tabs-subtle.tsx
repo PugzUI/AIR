@@ -17,9 +17,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
-import { springs } from '@/lib/motion-tokens'
 
 interface TabsSubtleContextValue {
   selectedValue: string
@@ -140,8 +138,7 @@ export interface TabsSubtleItemProps extends Omit<HTMLAttributes<HTMLButtonEleme
 
 export const TabsSubtleItem = forwardRef<HTMLButtonElement, TabsSubtleItemProps>(
   ({ value, icon, label, className, ...props }, ref) => {
-    const { selectedValue, onSelect, idPrefix, layoutId } = useTabsSubtleContext()
-    const reduceMotion = useReducedMotion()
+    const { selectedValue, onSelect, idPrefix } = useTabsSubtleContext()
     const isSelected = selectedValue === value
 
     return (
@@ -165,11 +162,7 @@ export const TabsSubtleItem = forwardRef<HTMLButtonElement, TabsSubtleItemProps>
         {...props}
       >
         {isSelected && (
-          <motion.span
-            layoutId={reduceMotion ? undefined : `${layoutId}-pill`}
-            className="absolute inset-0 -z-10 rounded-md squircle-corners bg-background shadow-sm"
-            transition={reduceMotion ? { duration: 0 } : springs.settle}
-          />
+          <span className="absolute inset-0 -z-10 rounded-md squircle-corners bg-background shadow-sm" />
         )}
         {icon && (
           <span aria-hidden="true" className="shrink-0 [&_svg]:size-4">

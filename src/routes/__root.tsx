@@ -9,7 +9,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Relay · Fleet" },
-      { name: "theme-color", content: "#000000" },
+      { name: "theme-color", content: "#070707" },
       {
         name: "description",
         content: "A host-authoritative agent fleet workspace, rebuilt with Nexvyn UI.",

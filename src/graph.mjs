@@ -1,6 +1,6 @@
 import { sessionState } from "./fleet.mjs";
 
-export const GRAPH_CARD_SIZE = { w: 74, h: 32 };
+export const GRAPH_CARD_SIZE = { w: 74, h: 24 };
 // Keep the plane bounded but spacious enough to pan past every edge on a
 // normal desktop viewport. Nodes and routes use this same coordinate frame.
 export const GRAPH_PADDING = { x: 520, y: 320 };
@@ -31,7 +31,7 @@ const sessionCluster = (count) => {
 const providerGrid = (providers) => {
   if (!providers.length) {
     return {
-      columns: 0, cellWidth: 0, width: 0, rowHeights: [], height: 0, cells: [],
+      columns: 0, columnWidths: [], columnOffsets: [], width: 0, rowHeights: [], height: 0, cells: [],
     };
   }
   const columns = Math.min(lane.providerColumns, Math.max(1, providers.length));
@@ -40,10 +40,20 @@ const providerGrid = (providers) => {
     ...provider,
     cluster: sessionCluster(provider.rows.length),
   }));
-  const cellWidth = Math.max(
-    GRAPH_CARD_SIZE.w,
-    ...cells.map(({ cluster }) => cluster.width),
-  );
+  const columnWidths = Array.from({ length: columns }, (_, column) => {
+    let maxWidth = GRAPH_CARD_SIZE.w;
+    for (let row = 0; row < rows; row++) {
+      const cell = cells[row * columns + column];
+      if (cell) maxWidth = Math.max(maxWidth, cell.cluster.width);
+    }
+    return maxWidth;
+  });
+  const columnOffsets = [];
+  let offset = 0;
+  for (let column = 0; column < columns; column++) {
+    columnOffsets.push(offset);
+    offset += columnWidths[column] + lane.gapX;
+  }
   const rowHeights = Array.from({ length: rows }, (_, row) =>
     Math.max(
       GRAPH_CARD_SIZE.h + lane.providerSessionGap + GRAPH_CARD_SIZE.h,
@@ -54,8 +64,10 @@ const providerGrid = (providers) => {
     ));
   return {
     columns,
-    cellWidth,
-    width: columns * cellWidth + (columns - 1) * lane.gapX,
+    columnWidths,
+    columnOffsets,
+    width: columnWidths.reduce((sum, width) => sum + width, 0) +
+      (columns - 1) * lane.gapX,
     rowHeights,
     height: rowHeights.reduce((sum, height) => sum + height, 0) +
       (rows - 1) * lane.gapY,
@@ -78,22 +90,28 @@ function elbow(x1, y1, x2, y2, bendY = (y1 + y2) / 2) {
   return `M ${Math.round(x1)} ${Math.round(y1)} V ${bend} H ${Math.round(x2)} V ${Math.round(y2)}`;
 }
 
-/** @param {number} hostCenterX
+/** @param {{x: number, y: number, w: number, h: number}} hostNode
  * @param {number} hostFacingY
  * @param {{x: number, y: number, w: number, h: number}} provider
  * @param {"up" | "down"} direction
  * @param {number | null} branchX */
-function hostProviderElbow(hostCenterX, hostFacingY, provider, direction, branchX = null) {
+function hostProviderElbow(hostNode, hostFacingY, provider, direction, branchX = null) {
+  const hostCenterX = hostNode.x + hostNode.w / 2;
+  const hostCenterY = Math.round(hostNode.y + hostNode.h / 2);
   const providerCenterX = provider.x + provider.w / 2;
-  const edgeX = providerCenterX < hostCenterX ? provider.x + provider.w : provider.x;
-  const providerFacingY = direction === "up"
-    ? provider.y + provider.h + 18
-    : provider.y - 18;
+  const targetY = Math.round(provider.y + provider.h / 2);
+  const edgeX = branchX !== null
+    ? (branchX < providerCenterX ? provider.x : provider.x + provider.w)
+    : (providerCenterX < hostCenterX ? provider.x + provider.w : provider.x);
   if (branchX !== null) {
-    return `M ${Math.round(hostCenterX)} ${Math.round(hostFacingY)} H ${Math.round(branchX)} V ${Math.round(providerFacingY)} H ${Math.round(edgeX)} V ${Math.round(provider.y + provider.h / 2)}`;
+    const hostSideX = branchX < hostCenterX ? hostNode.x : hostNode.x + hostNode.w;
+    return `M ${Math.round(hostSideX)} ${hostCenterY} H ${Math.round(branchX)} V ${targetY} H ${Math.round(edgeX)} V ${targetY}`;
   }
-  return elbow(hostCenterX, hostFacingY, edgeX, provider.y + provider.h / 2,
-    providerFacingY);
+  if (Math.round(providerCenterX) === Math.round(hostCenterX)) {
+    const facingEdgeY = direction === "up" ? provider.y + provider.h : provider.y;
+    return `M ${Math.round(hostCenterX)} ${Math.round(hostFacingY)} V ${Math.round(facingEdgeY)} H ${Math.round(hostCenterX)} V ${targetY}`;
+  }
+  return elbow(hostCenterX, hostFacingY, edgeX, targetY, targetY);
 }
 
 /** @param {{x: number, y: number, w: number, h: number}} provider
@@ -222,13 +240,14 @@ export function buildGraph(hosts, sessions, query = "", limit = 16) {
       const { agent, rows, cluster } = grid.cells[index];
       const row = Math.floor(index / grid.columns);
       const column = index % grid.columns;
-      const cellX = gridX + column * (grid.cellWidth + lane.gapX);
+      const cellWidth = grid.columnWidths[column];
+      const cellX = gridX + grid.columnOffsets[column];
       const visualRow = direction === "up" ? grid.rowHeights.length - row - 1 : row;
       const cellY = gridY + visualRowHeights
         .slice(0, visualRow)
         .reduce((sum, height) => sum + height + lane.gapY, 0);
-      const clusterX = Math.round(cellX + (grid.cellWidth - cluster.width) / 2);
-      const providerX = Math.round(cellX + (grid.cellWidth - GRAPH_CARD_SIZE.w) / 2);
+      const clusterX = Math.round(cellX + (cellWidth - cluster.width) / 2);
+      const providerX = Math.round(cellX + (cellWidth - GRAPH_CARD_SIZE.w) / 2);
       const rowHeight = visualRowHeights[visualRow];
       const providerY = direction === "up"
         ? cellY + rowHeight - GRAPH_CARD_SIZE.h
@@ -244,15 +263,28 @@ export function buildGraph(hosts, sessions, query = "", limit = 16) {
         provider: agent.provider || "", sessionCount: rows.length,
       };
       nodes.push(providerNode);
+      let channelX = null;
+      if (row > 0) {
+        if (column > 0) {
+          const prevRight = gridX + grid.columnOffsets[column - 1] + grid.columnWidths[column - 1];
+          channelX = Math.round((prevRight + cellX) / 2);
+        } else if (grid.columns > 1) {
+          const colRight = cellX + cellWidth;
+          const nextLeft = gridX + grid.columnOffsets[1];
+          channelX = Math.round((colRight + nextLeft) / 2);
+        } else {
+          channelX = Math.round(cellX - lane.gapX / 2);
+        }
+      }
       edges.push({
         hostId: host.id, from: hostNode.id, to: providerId,
         stale: host.state.status !== "connected",
         d: hostProviderElbow(
-          hostCenterX,
+          hostNode,
           direction === "up" ? hostNode.y : hostNode.y + hostNode.h,
           providerNode,
           direction,
-          row > 0 ? componentX - lane.gapX : null,
+          channelX,
         ),
       });
 

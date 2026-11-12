@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/ai-relay
-ExecStart=/usr/bin/node %h/ai-relay/node_modules/@ahpd/server/dist/main.js --config-file %h/ai-relay/.local/demo/%i/config.json --no-cwd --no-update-check
-Environment=XDG_CONFIG_HOME=%h/ai-relay/.local/demo/%i/xdg/config
-Environment=XDG_CACHE_HOME=%h/ai-relay/.local/demo/%i/xdg/cache
-Environment=XDG_STATE_HOME=%h/ai-relay/.local/demo/%i/xdg/state
-Environment=XDG_DATA_HOME=%h/ai-relay/.local/demo/%i/xdg/data
+WorkingDirectory=%h/work/Relay
+ExecStart=/usr/bin/node %h/work/Relay/node_modules/@ahpd/server/dist/main.js --config-file %h/work/Relay/.local/demo/%i/config.json --no-cwd --no-update-check
+Environment=XDG_CONFIG_HOME=%h/work/Relay/.local/demo/%i/xdg/config
+Environment=XDG_CACHE_HOME=%h/work/Relay/.local/demo/%i/xdg/cache
+Environment=XDG_STATE_HOME=%h/work/Relay/.local/demo/%i/xdg/state
+Environment=XDG_DATA_HOME=%h/work/Relay/.local/demo/%i/xdg/data
 Restart=on-failure
 RestartSec=2
 KillMode=control-group

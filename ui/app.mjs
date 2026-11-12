@@ -1,7 +1,7 @@
 import { LitElement, html, svg, nothing } from "lit";
 import { Fleet, attentionFor, sessionState, statusOf } from "../src/fleet.mjs";
 import { buildGraph } from "../src/graph.mjs";
-import { paintTopology, releaseTopology } from "./topology-fx.mjs";
+import { edgeGradientCoords, paintTopology, releaseTopology } from "./topology-fx.mjs";
 
 const short = (value, length = 32) =>
   String(value || "—").length > length ? String(value).slice(0, length - 1) + "…" : String(value || "—");
@@ -27,22 +27,17 @@ const nodeTitleLines = (node) => {
 };
 const nodeTitleFontSize = (node, lines) => {
   const originalLength = String(node.title || "—").trim().length;
-  if (lines.length === 1 && originalLength <= 10) return 8;
-  if (lines.length === 1 && originalLength <= 18) return 7;
-  return 6.5;
+  if (lines.length === 1 && originalLength <= 10) return 9.0;
+  if (lines.length === 1 && originalLength <= 20) return 6.5;
+  return 6.0;
 };
 const nodeTitleSizeClass = (fontSize) =>
-  fontSize === 8 ? "title-short" : fontSize === 7 ? "title-medium" : "title-long";
+  fontSize >= 9.0 ? "title-short" : fontSize >= 6.5 ? "title-medium" : "title-long";
 const nodeTitleLayout = (node, lines) => {
   const fontSize = nodeTitleFontSize(node, lines);
-  // Keep the title in the space above the fixed signal-bar region, rather
-  // than anchoring the first baseline to a constant card offset.
-  const titleTop = node.y + 3;
-  const signalRegionTop = node.y + node.h - 9;
-  const titleBlockHeight = Math.max(0, signalRegionTop - titleTop);
-  const lineStep = lines.length > 1 ? Math.min(8, titleBlockHeight / lines.length) : 0;
-  const renderedHeight = fontSize + Math.max(0, lines.length - 1) * lineStep;
-  const firstBaseline = titleTop + (titleBlockHeight - renderedHeight) / 2 + fontSize;
+  const topPad = lines.length > 1 ? 2.2 : (fontSize >= 9.0 ? 3.0 : 4.5);
+  const lineStep = lines.length > 1 ? 6.2 : 0;
+  const firstBaseline = node.y + topPad + fontSize;
   return { fontSize, firstBaseline, lineStep };
 };
 const DEMO_BOOTSTRAP_ENDPOINTS = Object.freeze({
@@ -50,6 +45,34 @@ const DEMO_BOOTSTRAP_ENDPOINTS = Object.freeze({
   "Demo Secondary": "ws://127.0.0.1:42001",
 });
 const demoHostId = (label) => String(label).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+const interAgentPath = (nodeA, nodeB) => {
+  if (!nodeA || !nodeB) return "";
+  const w = nodeA.w || 74;
+  const h = nodeA.h || 32;
+  const ax = Math.round(nodeA.x);
+  const ay = Math.round(nodeA.y);
+  const bx = Math.round(nodeB.x);
+  const by = Math.round(nodeB.y);
+
+  if (ay === by) {
+    const x1 = ax < bx ? ax + w : ax;
+    const x2 = ax < bx ? bx : bx + w;
+    const y = Math.round(ay + h / 2);
+    return `M ${x1} ${y} H ${x2}`;
+  }
+  if (ax === bx) {
+    const y1 = ay < by ? ay + h : ay;
+    const y2 = ay < by ? by : by + h;
+    const x = Math.round(ax + w / 2);
+    return `M ${x} ${y1} V ${y2}`;
+  }
+  const y1 = ay < by ? ay + h : ay;
+  const y2 = ay < by ? by : by + h;
+  const midY = Math.round((y1 + y2) / 2);
+  const x1 = Math.round(ax + w / 2);
+  const x2 = Math.round(bx + w / 2);
+  return `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`;
+};
 const isDemoBootstrap = (payload) => {
   const hosts = payload?.hosts;
   const labels = Object.keys(DEMO_BOOTSTRAP_ENDPOINTS);
@@ -81,10 +104,10 @@ const nodeToolDefs = (node) => node.kind === "session" ? [
   { id: "sessions", label: "Sessions" },
 ];
 const nodeToolGlyph = (id, cx, cy) => {
-  if (id === "state") return svg`<circle class="node-tool-icon" cx="${cx}" cy="${cy}" r="2.2"></circle>`;
-  if (id === "workspace") return svg`<path class="node-tool-icon" d="M${cx - 3} ${cy - 2.2}h2l1 1h3v3.4h-6Z"></path>`;
-  if (id === "sessions") return svg`<path class="node-tool-icon" d="M${cx - 2.8} ${cy - 2}h5.6M${cx - 2.8} ${cy}h5.6M${cx - 2.8} ${cy + 2}h3.8"></path>`;
-  return svg`<polygon class="node-tool-icon" points="${cx},${cy - 2.7} ${cx + 2.7},${cy} ${cx},${cy + 2.7} ${cx - 2.7},${cy}"></polygon>`;
+  if (id === "state") return svg`<circle class="node-tool-icon" cx="${cx}" cy="${cy}" r="2"></circle>`;
+  if (id === "workspace") return svg`<path class="node-tool-icon" d="M${cx - 2.25} ${cy - 1.55}h1.5l.75.75h2.25v2.35h-4.5Z"></path>`;
+  if (id === "sessions") return svg`<path class="node-tool-icon" d="M${cx - 2.6} ${cy - 2}h5.2M${cx - 2.6} ${cy}h5.2M${cx - 2.6} ${cy + 2}h3.5"></path>`;
+  return svg`<polygon class="node-tool-icon" points="${cx},${cy - 2.2} ${cx + 2.2},${cy} ${cx},${cy + 2.2} ${cx - 2.2},${cy}"></polygon>`;
 };
 const icon = (name) => {
   const paths = {
@@ -99,6 +122,7 @@ const icon = (name) => {
     "chevron-right": svg`<path d="M4 2.5L7.5 6 4 9.5"/>`,
     "chevron-down": svg`<path d="M2.5 4L6 7.5 9.5 4"/>`,
     "chevron-up": svg`<path d="M2.5 8L6 4.5 9.5 8"/>`,
+    fit: svg`<path d="M2 4.5V2h2.5M7.5 2H10v2.5M10 7.5V10H7.5M4.5 10H2V7.5"/>`,
   };
   return html`<svg class="icon-svg" viewBox="0 0 12 12" aria-hidden="true">${paths[name] || nothing}</svg>`;
 };
@@ -216,6 +240,7 @@ export class RelayFleet extends LitElement {
     this.mapScrollFrame = 0;
     this.mapPanX = 0;
     this.mapPanY = 0;
+    this.mapZoom = 1;
     this.mapFrameKey = "";
     this.mapPointer = null;
     this.mapDidPan = false;
@@ -335,44 +360,156 @@ export class RelayFleet extends LitElement {
   }
 
   demoPulse() {
+    const pulses = this.demoPulses();
+    return pulses[0] ? { edge: { d: pulses[0].d }, progress: 0 } : null;
+  }
+
+  demoPulses() {
     if (!this.demoBootstrapActive || !this.demoHostIds.size ||
         this.motionPreference?.matches || !this.fleet.eventStreamHealthy ||
-        !this.visibleGraph || !this.demoSignalStartedAt) return null;
-    const viewport = this.querySelector(".map-viewport");
-    const stage = this.querySelector(".map-stage");
-    const visibleEdges = (() => {
-      if (!viewport || !stage) return this.visibleGraph.edges;
-      const left = -stage.offsetLeft - this.mapPanX;
-      const top = -stage.offsetTop - this.mapPanY;
-      const right = left + viewport.clientWidth;
-      const bottom = top + viewport.clientHeight;
-      const visibleIds = new Set(this.visibleGraph.nodes
-        .filter((node) => node.x + node.w >= left && node.x <= right &&
-          node.y + node.h >= top && node.y <= bottom)
-        .map((node) => node.id));
-      return this.visibleGraph.edges.filter((edge) =>
-        visibleIds.has(edge.from) || visibleIds.has(edge.to));
-    })();
-    const edges = visibleEdges.filter((edge) =>
+        !this.visibleGraph || !this.demoSignalStartedAt) return [];
+
+    const now = Math.max(0, performance.now() - this.demoSignalStartedAt);
+    const allEdges = this.visibleGraph.edges.filter((edge) =>
       !edge.stale && this.demoHostIds.has(edge.hostId));
-    if (!edges.length) return null;
-    const phase = Math.max(0, performance.now() - this.demoSignalStartedAt) / 1600;
-    return { edge: edges[Math.floor(phase) % edges.length], progress: phase % 1 };
+    if (!allEdges.length) return [];
+
+    const nodes = this.visibleGraph.nodes;
+
+    // Edges from providers to sessions (agent delegating to subagent)
+    const primarySubagentEdges = allEdges.filter((e) =>
+      e.sessionUri && e.hostId === "demo-primary");
+    const secondarySubagentEdges = allEdges.filter((e) =>
+      e.sessionUri && e.hostId === "demo-secondary");
+
+    // Edges from host to provider (host coordination)
+    const hostEdges = allEdges.filter((e) => !e.sessionUri);
+
+    // Inter-agent peer delegation paths on each host
+    const interAgentPaths = [];
+    for (const hostId of ["demo-primary", "demo-secondary"]) {
+      const providers = nodes.filter((n) => n.kind === "provider" && n.hostId === hostId);
+      const byName = new Map(providers.map((p) => [p.provider, p]));
+      if (hostId === "demo-primary") {
+        if (byName.get("planner") && byName.get("builder")) {
+          interAgentPaths.push(interAgentPath(byName.get("planner"), byName.get("builder")));
+        }
+        if (byName.get("builder") && byName.get("reviewer")) {
+          interAgentPaths.push(interAgentPath(byName.get("builder"), byName.get("reviewer")));
+        }
+        if (byName.get("reviewer") && byName.get("qa")) {
+          interAgentPaths.push(interAgentPath(byName.get("reviewer"), byName.get("qa")));
+        }
+        if (byName.get("scout") && byName.get("planner")) {
+          interAgentPaths.push(interAgentPath(byName.get("scout"), byName.get("planner")));
+        }
+      } else {
+        if (byName.get("builder") && byName.get("reviewer")) {
+          interAgentPaths.push(interAgentPath(byName.get("builder"), byName.get("reviewer")));
+        }
+        if (byName.get("reviewer") && byName.get("qa")) {
+          interAgentPaths.push(interAgentPath(byName.get("reviewer"), byName.get("qa")));
+        }
+        if (byName.get("qa") && byName.get("watcher")) {
+          interAgentPaths.push(interAgentPath(byName.get("qa"), byName.get("watcher")));
+        }
+      }
+    }
+    const validInterAgent = interAgentPaths.filter(Boolean);
+
+    // Reverse subagent reporting paths (subagent session -> provider)
+    const reverseSubagentPaths = (edges) => edges.map((e) => {
+      const m = e.d?.match(/^M\s+([-\d.]+)\s+([-\d.]+)\s+V\s+([-\d.]+)\s+H\s+([-\d.]+)\s+V\s+([-\d.]+)$/);
+      if (!m) return null;
+      return `M ${m[4]} ${m[5]} V ${m[3]} H ${m[1]} V ${m[2]}`;
+    }).filter(Boolean);
+
+    const primaryReverse = reverseSubagentPaths(primarySubagentEdges);
+    const secondaryReverse = reverseSubagentPaths(secondarySubagentEdges);
+
+    const slots = [];
+
+    // Slot 0: Primary Agent -> Subagent delegation (cycles through primary agent-session edges)
+    if (primarySubagentEdges.length) {
+      const idx = Math.floor(now / 2000) % primarySubagentEdges.length;
+      slots.push({
+        id: "pri-subagent",
+        d: primarySubagentEdges[idx].d,
+        duration: "0.82s",
+        delay: "-0.15s",
+      });
+    }
+
+    // Slot 1: Secondary Agent -> Subagent delegation (cycles through secondary agent-session edges)
+    if (secondarySubagentEdges.length) {
+      const idx = Math.floor(now / 2400) % secondarySubagentEdges.length;
+      slots.push({
+        id: "sec-subagent",
+        d: secondarySubagentEdges[idx].d,
+        duration: "0.95s",
+        delay: "-0.42s",
+      });
+    }
+
+    // Slot 2: Inter-agent peer delegation (Planner -> Builder, Builder -> Reviewer, Reviewer -> QA, etc.)
+    if (validInterAgent.length) {
+      const idx = Math.floor(now / 1800) % validInterAgent.length;
+      slots.push({
+        id: "inter-agent",
+        d: validInterAgent[idx],
+        duration: "0.76s",
+        delay: "-0.65s",
+      });
+    }
+
+    // Slot 3: Subagent reporting back to agent (reverse path)
+    const allReverse = [...primaryReverse, ...secondaryReverse];
+    if (allReverse.length) {
+      const idx = Math.floor(now / 2200) % allReverse.length;
+      slots.push({
+        id: "subagent-report",
+        d: allReverse[idx],
+        duration: "1.05s",
+        delay: "-0.28s",
+      });
+    }
+
+    // Slot 4: Host orchestration / Concurrent secondary subagent delegation
+    const mixedPool = [...(hostEdges.length ? hostEdges.map((e) => e.d) : []), ...secondarySubagentEdges.map((e) => e.d)];
+    if (mixedPool.length) {
+      const idx = Math.floor(now / 2600) % mixedPool.length;
+      slots.push({
+        id: "orch-delegation",
+        d: mixedPool[idx],
+        duration: "0.88s",
+        delay: "-0.50s",
+      });
+    }
+
+    return slots;
   }
 
   startDemoSignalLoop() {
     if (!this.demoBootstrapActive || this.motionPreference?.matches ||
         this.demoSignalFrame || !this.isConnected) return;
     this.demoSignalStartedAt = performance.now();
+    this.demoSignalPaths = null;
     const tick = () => {
       this.demoSignalFrame = 0;
       if (!this.isConnected || !this.demoBootstrapActive || this.motionPreference?.matches ||
           !this.fleet.eventStreamHealthy) return;
-      const pulse = this.demoPulse();
-      const signalPath = this.querySelector(".demo-signal");
-      if (signalPath && pulse?.edge?.d && pulse.edge.d !== this.demoSignalEdge) {
-        signalPath.setAttribute("d", pulse.edge.d);
-        this.demoSignalEdge = pulse.edge.d;
+      const pulses = this.demoPulses();
+      if (pulses && pulses.length) {
+        if (!this.demoSignalPaths || this.demoSignalPaths.length !== pulses.length) {
+          this.demoSignalPaths = Array.from(this.querySelectorAll(".demo-signal"));
+        }
+        for (let i = 0; i < pulses.length; i++) {
+          const pathEl = this.demoSignalPaths[i];
+          const pulse = pulses[i];
+          if (pathEl && pulse?.d && pathEl.getAttribute("d") !== pulse.d) {
+            pathEl.setAttribute("d", pulse.d);
+          }
+        }
       }
       this.demoSignalFrame = requestAnimationFrame(tick);
     };
@@ -383,7 +520,7 @@ export class RelayFleet extends LitElement {
     if (this.demoSignalFrame) cancelAnimationFrame(this.demoSignalFrame);
     this.demoSignalFrame = 0;
     this.demoSignalStartedAt = 0;
-    this.demoSignalEdge = "";
+    this.demoSignalPaths = null;
     this.lastTopologyPaintKey = null;
   }
 
@@ -415,13 +552,13 @@ export class RelayFleet extends LitElement {
       this.fleet.selected?.hostId, this.fleet.selected?.uri, this.previewNodeId,
       this.fleet.lastSignal?.at, this.fleet.slots.chat?.uri,
       demoPulse?.edge?.d, demoPulse?.progress,
-      height, this.motionPreference?.matches,
+      height, this.mapZoom || 1, this.motionPreference?.matches,
     ]);
     if (!force && this.lastTopologyPaintKey === key) return;
     this.lastTopologyPaintKey = key;
     paintTopology(canvas, this.visibleGraph, this.fleet.selected,
       this.fleet.lastSignal, this.fleet.slots.chat?.uri, scrollY, height,
-      this.previewNodeId);
+      this.previewNodeId, "", this.mapZoom || 1);
   }
 
   disconnectedCallback() {
@@ -523,7 +660,7 @@ export class RelayFleet extends LitElement {
     const graph = this.visibleGraph;
     const viewport = this.querySelector(".map-viewport");
     const stage = this.querySelector(".map-stage");
-    if (!graph?.nodes.length || !viewport || !stage) return;
+    if (!graph?.nodes.length || !viewport) return;
     const key = graph.nodes.map((node) =>
       [node.id, node.x, node.y, node.w, node.h]).flat().join("|");
     if (key === this.mapFrameKey) return;
@@ -537,27 +674,98 @@ export class RelayFleet extends LitElement {
     const focusX = focusNode
       ? focusNode.x + focusNode.w / 2
       : (minX + maxX) / 2;
-    const baseX = stage.offsetLeft;
-    const baseY = stage.offsetTop;
-    this.mapPanX = this.clampMapPan(
-      viewport.clientWidth / 2 - (baseX + focusX),
-      viewport.clientHeight / 2 - (baseY + (minY + maxY) / 2),
-      viewport,
-    ).x;
-    this.mapPanY = this.clampMapPan(
-      this.mapPanX,
-      viewport.clientHeight / 2 - (baseY + (minY + maxY) / 2),
-      viewport,
-    ).y;
+    const focusY = (minY + maxY) / 2;
+    this.mapZoom = 1;
+    const restingTop = stage ? stage.offsetTop : 35;
+    const targetVx = viewport.clientWidth / 2;
+    const targetVy = viewport.clientHeight / 2;
+    const stageLeft = targetVx - focusX;
+    const stageTop = targetVy - focusY;
+    const targetPanX = Math.round(stageLeft - (viewport.clientWidth - graph.width) / 2);
+    const targetPanY = Math.round(stageTop - restingTop);
+    const clamped = this.clampMapPan(targetPanX, targetPanY, viewport);
+    this.mapPanX = clamped.x;
+    this.mapPanY = clamped.y;
     this.mapFrameKey = key;
+    this.updateMapTransform();
+  }
+
+  fitMapToCanvas() {
+    const graph = this.visibleGraph;
+    const viewport = this.querySelector(".map-viewport");
+    const stage = this.querySelector(".map-stage");
+    if (!graph?.nodes.length || !viewport) return;
+    const minX = Math.min(...graph.nodes.map((node) => node.x));
+    const maxX = Math.max(...graph.nodes.map((node) => node.x + node.w));
+    const minY = Math.min(...graph.nodes.map((node) => node.y));
+    const maxY = Math.max(...graph.nodes.map((node) => node.y + node.h));
+    const boxW = Math.max(1, maxX - minX + 64);
+    const boxH = Math.max(1, maxY - minY + 64);
+    const availW = Math.max(120, viewport.clientWidth - 48);
+    const availH = Math.max(120, viewport.clientHeight - 110);
+    const nextZoom = Math.max(0.4, Math.min(2.0, Math.min(availW / boxW, availH / boxH)));
+    this.mapZoom = Math.round(nextZoom * 100) / 100;
+    const nodeCenterX = (minX + maxX) / 2;
+    const nodeCenterY = (minY + maxY) / 2;
+    const restingTop = stage ? stage.offsetTop : 35;
+    const targetVx = viewport.clientWidth / 2;
+    const targetVy = (viewport.clientHeight + 24) / 2;
+    const stageLeft = targetVx - nodeCenterX * this.mapZoom;
+    const stageTop = targetVy - nodeCenterY * this.mapZoom;
+    const targetPanX = Math.round(stageLeft - (viewport.clientWidth - graph.width * this.mapZoom) / 2);
+    const targetPanY = Math.round(stageTop - restingTop);
+    const clamped = this.clampMapPan(targetPanX, targetPanY, viewport);
+    this.mapPanX = clamped.x;
+    this.mapPanY = clamped.y;
+    this.updateMapTransform();
+    this.requestUpdate();
+  }
+
+  zoomMapBy(delta, pivotX, pivotY) {
+    const viewport = this.querySelector(".map-viewport");
+    const stage = this.querySelector(".map-stage");
+    const prevZoom = this.mapZoom || 1;
+    const nextZoom = Math.max(0.4, Math.min(2.4, Math.round((prevZoom + delta) * 100) / 100));
+    if (nextZoom === prevZoom) return;
+    if (viewport && this.visibleGraph) {
+      const rect = viewport.getBoundingClientRect();
+      const vx = pivotX != null ? pivotX - rect.left : viewport.clientWidth / 2;
+      const vy = pivotY != null ? pivotY - rect.top : viewport.clientHeight / 2;
+      const restingTop = stage ? stage.offsetTop : 35;
+      const stageLeft = (viewport.clientWidth - this.visibleGraph.width * prevZoom) / 2 + this.mapPanX;
+      const stageTop = restingTop + this.mapPanY;
+      const graphX = (vx - stageLeft) / prevZoom;
+      const graphY = (vy - stageTop) / prevZoom;
+      const newStageLeft = vx - graphX * nextZoom;
+      const newStageTop = vy - graphY * nextZoom;
+      const targetPanX = Math.round(newStageLeft - (viewport.clientWidth - this.visibleGraph.width * nextZoom) / 2);
+      const targetPanY = Math.round(newStageTop - restingTop);
+      this.mapZoom = nextZoom;
+      const clamped = this.clampMapPan(targetPanX, targetPanY, viewport);
+      this.mapPanX = clamped.x;
+      this.mapPanY = clamped.y;
+    } else {
+      this.mapZoom = nextZoom;
+    }
+    this.updateMapTransform();
+    this.requestUpdate();
+  }
+
+  onMapWheel(event) {
+    if (event.ctrlKey || event.metaKey || event.deltaY !== 0) {
+      event.preventDefault();
+      const step = event.deltaY < 0 ? 0.12 : -0.12;
+      this.zoomMapBy(step, event.clientX, event.clientY);
+    }
   }
 
   clampMapPan(x, y, viewport = this.querySelector(".map-viewport")) {
     const graph = this.visibleGraph;
     if (!graph || !viewport) return { x, y };
+    const zoom = this.mapZoom || 1;
     const padding = graph.padding || { x: 72, y: 72 };
-    const maxX = Math.max(padding.x, (graph.width - viewport.clientWidth) / 2 + padding.x);
-    const maxY = Math.max(padding.y, (graph.height - viewport.clientHeight) / 2 + padding.y);
+    const maxX = Math.max(padding.x, (graph.width * zoom - viewport.clientWidth) / 2 + padding.x);
+    const maxY = Math.max(padding.y, (graph.height * zoom - viewport.clientHeight) / 2 + padding.y);
     return {
       x: Math.max(-maxX, Math.min(maxX, x)),
       y: Math.max(-maxY, Math.min(maxY, y)),
@@ -567,13 +775,16 @@ export class RelayFleet extends LitElement {
   updateMapTransform() {
     const stage = this.querySelector(".map-stage");
     if (!stage) return;
-    if (this.visibleGraph) {
-      stage.dataset.width = `${this.visibleGraph.width}px`;
-      stage.dataset.height = `${this.visibleGraph.height}px`;
+    const graph = this.visibleGraph;
+    const zoom = this.mapZoom || 1;
+    if (graph) {
+      stage.style.width = `${Math.round(graph.width * zoom)}px`;
+      stage.style.height = `${Math.round(graph.height * zoom)}px`;
     }
-    stage.dataset.panX = `${Math.round(this.mapPanX)}px`;
-    stage.dataset.panY = `${Math.round(this.mapPanY)}px`;
+    stage.style.transform = `translate3d(${Math.round(this.mapPanX)}px, ${Math.round(this.mapPanY)}px, 0)`;
+    stage.dataset.zoom = String(zoom);
     stage.classList.toggle("is-panning", Boolean(this.mapPointer));
+    this.scheduleTopologyPaint();
   }
 
   beginMapPan(event) {
@@ -1092,12 +1303,11 @@ export class RelayFleet extends LitElement {
   }
 
   render() {
-    const { hosts, sessions, activeHost, selectedSummary, working, attention } = this.getView();
+    const { hosts, sessions, activeHost, selectedSummary } = this.getView();
     const online = hosts.filter((host) => host.state.status === "connected").length;
     const graph = buildGraph(hosts, sessions, this.filterText);
     this.visibleGraph = graph;
-    const demoPulse = this.demoPulse();
-    const demoEdges = demoPulse?.edge ? [demoPulse.edge] : [];
+    const demoEdges = this.demoPulses();
     const previewNode = graph.nodes.find((node) => node.id === this.previewNodeId);
     const focusedNode = graph.nodes.find((node) => node.id === this.focusedNodeId) ||
       graph.nodes.find((node) => node.kind === "session" &&
@@ -1242,9 +1452,20 @@ export class RelayFleet extends LitElement {
                 @input=${(e) => { this.filterText = e.target.value; this.catalogLimit = 100; this.requestUpdate(); }}
                 @keydown=${(e) => { if (e.key === "Escape" && this.filterText) { e.preventDefault(); this.filterText = ""; e.currentTarget.value = ""; this.requestUpdate(); } }}>
               ${this.filterText ? html`<button class="quiet small" @click=${() => { this.filterText = ""; this.requestUpdate(); this.querySelector("#session-search")?.focus(); }}>${icon("close")} Clear</button>` : nothing}
+              <div class="map-zoom-controls" role="group" aria-label="Canvas zoom controls">
+                <button class="quiet small zoom-btn" type="button" aria-label="Zoom out"
+                  @click=${() => this.zoomMapBy(-0.15)}>−</button>
+                <span class="zoom-readout" aria-live="polite">${Math.round((this.mapZoom || 1) * 100)}%</span>
+                <button class="quiet small zoom-btn" type="button" aria-label="Zoom in"
+                  @click=${() => this.zoomMapBy(0.15)}>+</button>
+                <button class="quiet small fit-canvas-btn" type="button"
+                  title="Fit to canvas" aria-label="Fit to canvas"
+                  @click=${() => this.fitMapToCanvas()}>${icon("fit")}</button>
+              </div>
             </div>
             <p class="sr-only" id="map-instructions">Use Tab to enter the topology, arrow keys to move between nodes, click to preview, Enter to open controls, and drag empty space to pan the canvas. The session catalog below offers the same sessions as a list.</p>
             <div class="map-viewport" role="region" aria-label="Pannable fleet topology" tabindex="0"
+              @wheel=${(event) => this.onMapWheel(event)}
               @pointerdown=${(event) => this.beginMapPan(event)}
               @pointermove=${(event) => this.moveMapPan(event)}
               @pointerup=${(event) => this.endMapPan(event)}
@@ -1273,32 +1494,56 @@ export class RelayFleet extends LitElement {
                     </form>
                   ` : nothing}
                 </div>
-                <div class="shell-state" role="status">
-                  ${working ? html`<span class="working">${working} working</span>` : nothing}
-                  ${attention ? html`<span class="attention">${attention} need input</span>` : nothing}
-                </div>
-                <span class="map-head-legend">
-                  <span class="legend-item" aria-hidden="true"><svg class="legend-svg legend-active" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.2" fill="currentColor"/></svg>ACTIVE</span>
-                  <span class="legend-item" aria-hidden="true"><svg class="legend-svg legend-attention" viewBox="0 0 10 10"><polygon points="5,1.5 9,8.5 1,8.5" fill="currentColor"/></svg>ATTENTION</span>
-                  <span class="legend-item" aria-hidden="true"><svg class="legend-svg legend-idle" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="currentColor"/></svg>IDLE</span>
-                  <button class="quiet small topology-keys" type="button"
-                    @pointerdown=${(event) => event.stopPropagation()}
-                    @click=${() => this.openShortcuts()} aria-keyshortcuts="?">Keys <span class="key-hint" aria-hidden="true">?</span></button>
-                </span>
               </div>
               ${hosts.length && graph.nodes.length ? html`
-                <div class="map-stage" data-width="${graph.width}px" data-height="${graph.height}px"
-                  data-pan-x="${Math.round(this.mapPanX)}px" data-pan-y="${Math.round(this.mapPanY)}px">
-                <canvas class="map-lightfield" width="${graph.width}" height="${graph.height}"
+                <div class="map-stage"
+                  style="width: ${Math.round(graph.width * (this.mapZoom || 1))}px; height: ${Math.round(graph.height * (this.mapZoom || 1))}px; transform: translate3d(${Math.round(this.mapPanX)}px, ${Math.round(this.mapPanY)}px, 0);"
+                  data-zoom="${this.mapZoom || 1}">
+                <canvas class="map-lightfield"
+                  style="width: 100%; height: 100%;"
                   aria-hidden="true" @webglcontextrestored=${() => {
                     this.lastTopologyPaintKey = null;
                     this.scheduleTopologyPaint();
                   }}></canvas>
                 <svg class="map" viewBox="0 0 ${graph.width} ${graph.height}" role="group" aria-label="AHP host to agent to session topology" aria-describedby="map-instructions">
-                  <defs><pattern id="topology-grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 H 0 V 20" fill="none" stroke="#222" stroke-width=".5"></path></pattern></defs>
+                  <defs>
+                    <pattern id="topology-grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 H 0 V 20" fill="none" stroke="#222" stroke-width=".5"></path></pattern>
+                    <linearGradient id="signal-gradient" gradientUnits="userSpaceOnUse" x1="${Math.round(graph.width * 0.15)}" y1="${Math.round(graph.height * 0.15)}" x2="${Math.round(graph.width * 0.85)}" y2="${Math.round(graph.height * 0.85)}">
+                      <stop offset="0%" stop-color="#c4ff00"></stop>
+                      <stop offset="25%" stop-color="#96ff20"></stop>
+                      <stop offset="50%" stop-color="#50ff60"></stop>
+                      <stop offset="75%" stop-color="#20ffa0"></stop>
+                      <stop offset="100%" stop-color="#00ffc4"></stop>
+                    </linearGradient>
+                    <linearGradient id="working-border-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#ffffff"></stop>
+                      <stop offset="25%" stop-color="#a0a0a0"></stop>
+                      <stop offset="50%" stop-color="#303030"></stop>
+                      <stop offset="75%" stop-color="#a0a0a0"></stop>
+                      <stop offset="100%" stop-color="#ffffff"></stop>
+                      <animateTransform
+                        attributeName="gradientTransform"
+                        type="rotate"
+                        from="0 0.5 0.5"
+                        to="360 0.5 0.5"
+                        dur="2.4s"
+                        repeatCount="indefinite">
+                      </animateTransform>
+                    </linearGradient>
+                    ${graph.edges.map((edge, edgeIndex) => {
+                      const pts = edgeGradientCoords(edge.d);
+                      return svg`<linearGradient id="edge-grad-${edgeIndex}" gradientUnits="userSpaceOnUse" x1="${pts.x1}" y1="${pts.y1}" x2="${pts.x2}" y2="${pts.y2}">
+                        <stop offset="0%" stop-color="#c4ff00"></stop>
+                        <stop offset="25%" stop-color="#96ff20"></stop>
+                        <stop offset="50%" stop-color="#50ff60"></stop>
+                        <stop offset="75%" stop-color="#20ffa0"></stop>
+                        <stop offset="100%" stop-color="#00ffc4"></stop>
+                      </linearGradient>`;
+                    })}
+                  </defs>
                   <rect class="map-grid" x="-10000" y="-10000" width="20000" height="20000" fill="url(#topology-grid)"></rect>
-                  ${graph.edges.map((edge) => svg`<path class="edge-casing" d="${edge.d}"></path><path class="edge ${edge.stale ? "stale" : ""} ${this.fleet.lastSignal && selected?.hostId === edge.hostId && selected?.uri === edge.sessionUri && this.fleet.lastSignal.uri === this.fleet.slots.chat?.uri ? "signal" : ""}" d="${edge.d}"></path>`)}
-                  ${demoEdges.map((edge) => svg`<path class="demo-signal" d="${edge.d}" pathLength="1"></path>`)}
+                  ${graph.edges.map((edge, edgeIndex) => svg`<path class="edge-casing" d="${edge.d}"></path><path class="edge ${edge.stale ? "stale" : ""} ${this.fleet.lastSignal && selected?.hostId === edge.hostId && selected?.uri === edge.sessionUri && this.fleet.lastSignal.uri === this.fleet.slots.chat?.uri ? "signal" : ""}" stroke="${edge.stale ? nothing : `url(#edge-grad-${edgeIndex})`}" d="${edge.d}"></path>`)}
+                  ${demoEdges.map((pulse, i) => svg`<path class="demo-signal slot-${i}" data-slot="${i}" d="${pulse.d}" pathLength="1"></path>`)}
                   ${graph.nodes.map((node, index) => {
                     const state = this.nodeViewState.get(node.id) || {};
                     const activeView = state.hover || state.pinned || "";
@@ -1326,9 +1571,16 @@ export class RelayFleet extends LitElement {
                         }}
                         @keydown=${(event) => this.onGraphKey(event, node, graph)}>
                         <rect class="node-body" x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}"></rect>
+                        ${node.status === "working" ? svg`
+                          <rect class="node-working-border" x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" pathLength="100"></rect>
+                        ` : nothing}
                         <rect class="node-rail-bg" x="${node.x + 1}" y="${node.y + 1}" width="${railW - 1}" height="${node.h - 2}"></rect>
                         <line class="node-tool-rail" x1="${railX}" y1="${node.y + 1}" x2="${railX}" y2="${node.y + node.h - 1}"></line>
-                        ${tools.map((tool, toolIndex) => svg`
+                        ${tools.map((tool, toolIndex) => {
+                          const railPad = 5.0;
+                          const railStep = tools.length > 1 ? (node.h - railPad * 2) / (tools.length - 1) : 0;
+                          const toolCy = node.y + railPad + toolIndex * railStep;
+                          return svg`
                           <g class="node-tool ${state.pinned === tool.id ? "pinned" : ""}" role="button" tabindex="${node.id === focusedNode?.id ? "0" : "-1"}"
                             aria-label="${tool.label}" aria-pressed=${state.pinned === tool.id}
                             @pointerenter=${() => this.setNodeViewHover(node.id, tool.id)}
@@ -1336,11 +1588,12 @@ export class RelayFleet extends LitElement {
                             @click=${(event) => { event.stopPropagation(); this.toggleNodeView(node.id, tool.id); }}
                             @keydown=${(event) => this.onNodeToolKey(event, node, tool.id)}>
                             <rect class="node-tool-hit" x="${node.x + 1}" y="${node.y + toolIndex * (node.h / tools.length)}" width="${railW - 1}" height="${node.h / tools.length}"></rect>
-                            ${nodeToolGlyph(tool.id, node.x + railW / 2 + 0.5, node.y + (toolIndex + 0.5) * (node.h / tools.length))}
-                          </g>`)}
+                            ${nodeToolGlyph(tool.id, node.x + railW / 2 + 0.5, toolCy)}
+                          </g>`;
+                        })}
                         ${detail ? svg`
-                          <text class="node-view-label" x="${contentX}" y="${node.y + 11}">${detail.label}</text>
-                          <text class="node-view-value" x="${contentX}" y="${node.y + 21}">${short(detail.value, node.kind === "session" ? 15 : 16)}</text>
+                          <text class="node-view-label" x="${contentX}" y="${node.y + 8.2}">${detail.label}</text>
+                          <text class="node-view-value" x="${contentX}" y="${node.y + 14.4}">${short(detail.value, node.kind === "session" ? 15 : 16)}</text>
                         ` : svg`
                           <text class="node-name ${nodeTitleSizeClass(titleLayout.fontSize)} ${nodeStateLabel(node.status) ? "has-state" : ""}" x="${contentX}">
                             ${titleLines.map((line, lineIndex) => svg`
@@ -1349,7 +1602,7 @@ export class RelayFleet extends LitElement {
                           </text>
                         `}
                         <g class="node-signal" aria-hidden="true">
-                          ${[0, 1, 2, 3].map((slot) => svg`<rect class="${slot < signalLevel ? "on" : ""}" x="${contentX + slot * 11}" y="${node.y + node.h - 7}" width="8.5" height="2.5"></rect>`)}
+                          ${[0, 1, 2, 3].map((slot) => svg`<rect class="${slot < signalLevel ? "on" : ""}" x="${contentX + slot * 12}" y="${node.y + node.h - 5.8}" width="9.5" height="2"></rect>`)}
                         </g>
                       </g>`;
                   })}

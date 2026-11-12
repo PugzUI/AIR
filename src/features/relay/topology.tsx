@@ -8,9 +8,11 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { Scan } from "lucide-react";
 import { topologyFocusId } from "./helpers";
 import { buildGraph } from "../../graph.mjs";
 import {
+  edgeGradientCoords,
   paintTopology,
   relatedTopologyIds,
   releaseTopology,
@@ -42,6 +44,46 @@ type Props = {
   onPreview: (node: any) => void;
   onControl: (node: any) => void;
   signal?: any;
+  onConnect?: () => void;
+};
+const shortText = (value: string, length = 32) =>
+  String(value || "—").length > length
+    ? String(value).slice(0, length - 1) + "…"
+    : String(value || "—");
+const nodeTitleLines = (node: Node) => {
+  const limit = node.kind === "session" ? 10 : 11;
+  const words = String(node.title || "—").trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) current = word;
+    else if ((current + " " + word).length <= limit) current += " " + word;
+    else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  const folded = lines.slice(0, 2).map((line) => shortText(line, limit));
+  if (lines.length > 2 && !folded[1].endsWith("…")) {
+    folded[1] += "…";
+  }
+  return folded;
+};
+const nodeTitleFontSize = (node: Node, lines: string[]) => {
+  const originalLength = String(node.title || "—").trim().length;
+  if (lines.length === 1 && originalLength <= 10) return 9.0;
+  if (lines.length === 1 && originalLength <= 20) return 6.5;
+  return 6.0;
+};
+const nodeTitleSizeClass = (fontSize: number) =>
+  fontSize >= 9.0 ? "title-short" : fontSize >= 6.5 ? "title-medium" : "title-long";
+const nodeTitleLayout = (node: Node, lines: string[]) => {
+  const fontSize = nodeTitleFontSize(node, lines);
+  const topPad = lines.length > 1 ? 2.2 : (fontSize >= 9.0 ? 3.0 : 4.5);
+  const lineStep = lines.length > 1 ? 6.2 : 0;
+  const firstBaseline = node.y + topPad + fontSize;
+  return { fontSize, firstBaseline, lineStep, sizeClass: nodeTitleSizeClass(fontSize) };
 };
 const clip = (text: string, length = 17) =>
   text.length > length ? text.slice(0, length - 1) + "…" : text;
@@ -59,17 +101,6 @@ const networkColor = (node: Node) => {
   for (const character of identity) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   return networkPalette[hash % networkPalette.length];
 };
-const activeStates = [
-  "working",
-  "attention",
-  "error",
-  "failed",
-  "connecting",
-  "reconnecting",
-  "offline",
-  "disconnected",
-  "stale",
-];
 
 export default function Topology({
   hosts,
@@ -79,6 +110,7 @@ export default function Topology({
   onPreview,
   onControl,
   signal,
+  onConnect,
 }: Props) {
   const graph = useMemo(
     () => buildGraph(hosts, sessions, query),
@@ -111,6 +143,7 @@ export default function Topology({
   );
   const [hoverNode, setHoverNode] = useState("");
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
   const focusId = topologyFocusId(graph.nodes, focused, selectedId);
   const chosen = graph.nodes.find((n: Node) => n.id === selectedId);
   const pathFocusId = hoverNode || selectedId || "";
@@ -118,6 +151,35 @@ export default function Topology({
     () => relatedTopologyIds(graph, pathFocusId),
     [graph, pathFocusId],
   );
+  function zoomBy(delta: number) {
+    setZoom((prev) => Math.max(0.4, Math.min(2.4, Math.round((prev + delta) * 100) / 100)));
+  }
+  function fitToCanvas() {
+    const view = viewport.current;
+    if (!view || !graph.nodes.length) return;
+    const minX = Math.min(...graph.nodes.map((node) => node.x));
+    const maxX = Math.max(...graph.nodes.map((node) => node.x + node.w));
+    const minY = Math.min(...graph.nodes.map((node) => node.y));
+    const maxY = Math.max(...graph.nodes.map((node) => node.y + node.h));
+    const boxW = Math.max(1, maxX - minX + 64);
+    const boxH = Math.max(1, maxY - minY + 64);
+    const availW = Math.max(120, view.clientWidth - 48);
+    const availH = Math.max(120, view.clientHeight - 96);
+    const nextZoom = Math.max(
+      0.4,
+      Math.min(2, Math.round(Math.min(availW / boxW, availH / boxH) * 100) / 100),
+    );
+    setZoom(nextZoom);
+    requestAnimationFrame(() => {
+      const v = viewport.current;
+      if (!v) return;
+      const centerX = ((minX + maxX) / 2) * nextZoom;
+      const centerY = ((minY + maxY) / 2) * nextZoom;
+      v.scrollLeft = Math.max(0, centerX - v.clientWidth / 2);
+      v.scrollTop = Math.max(0, centerY - (v.clientHeight - 56) / 2);
+      setOffset({ x: v.scrollLeft, y: v.scrollTop });
+    });
+  }
   useEffect(() => {
     const view = viewport.current;
     if (!view || initialFrame.current || !graph.nodes.length) return;
@@ -129,9 +191,15 @@ export default function Topology({
       const maxY = Math.max(...graph.nodes.map((node) => node.y + node.h));
       const maxScrollX = Math.max(0, view.scrollWidth - view.clientWidth);
       const maxScrollY = Math.max(0, view.scrollHeight - view.clientHeight);
+      const firstHost =
+        graph.nodes.find((n) => n.kind === "host") || graph.nodes[0];
+      const targetX =
+        view.clientWidth < 500 && firstHost
+          ? firstHost.x + firstHost.w / 2 - view.clientWidth / 2
+          : (minX + maxX - view.clientWidth) / 2;
       view.scrollLeft = Math.max(
         0,
-        Math.min(maxScrollX, (minX + maxX - view.clientWidth) / 2),
+        Math.min(maxScrollX, targetX),
       );
       view.scrollTop = Math.max(
         0,
@@ -159,6 +227,7 @@ export default function Topology({
         view.clientHeight,
         selectedId || "",
         pathFocusId,
+        zoom,
       );
     paint();
     const observer = new ResizeObserver(paint);
@@ -269,6 +338,12 @@ export default function Topology({
       onPointerCancel={() => {
         drag.current = null;
       }}
+      onWheel={(e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          zoomBy(e.deltaY < 0 ? 0.12 : -0.12);
+        }
+      }}
       onScroll={(e) =>
         setOffset({
           x: e.currentTarget.scrollLeft,
@@ -276,6 +351,36 @@ export default function Topology({
         })
       }
     >
+      <div className="topology-zoom-controls" role="group" aria-label="Canvas zoom controls">
+        <button
+          type="button"
+          className="topology-zoom-btn"
+          aria-label="Zoom out"
+          onClick={() => zoomBy(-0.15)}
+        >
+          −
+        </button>
+        <span className="topology-zoom-readout" aria-live="polite">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          className="topology-zoom-btn"
+          aria-label="Zoom in"
+          onClick={() => zoomBy(0.15)}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="topology-fit-btn"
+          title="Fit to canvas"
+          aria-label="Fit to canvas"
+          onClick={fitToCanvas}
+        >
+          <Scan className="topology-fit-icon" aria-hidden="true" />
+        </button>
+      </div>
       <p className="sr-only" id={gridId + "-help"}>
         Use arrow keys between nodes, Space to preview, Enter to open controls.
         Drag empty space or scroll to pan. The Sessions list offers the same
@@ -294,13 +399,22 @@ export default function Topology({
               ? "Try another host, agent, or session name."
               : "Connect an AHP host to map its agents and sessions."}
           </p>
+          {!hosts.length && onConnect && (
+            <button
+              type="button"
+              className="action-primary empty-connect-btn"
+              onClick={onConnect}
+            >
+              + Connect a host
+            </button>
+          )}
         </div>
       ) : (
         <div
           className="topology-plane"
           style={{
-            width: graph.width / 16 + "rem",
-            height: graph.height / 16 + "rem",
+            width: (graph.width * zoom) / 16 + "rem",
+            height: (graph.height * zoom) / 16 + "rem",
           }}
         >
           <canvas
@@ -340,9 +454,64 @@ export default function Topology({
                   d="M80 0H0V80"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="0.8"
+                  strokeWidth="1.0"
                 />
               </pattern>
+              <linearGradient
+                id={gridId + "-signal"}
+                gradientUnits="userSpaceOnUse"
+                x1={Math.round(graph.width * 0.15)}
+                y1={Math.round(graph.height * 0.15)}
+                x2={Math.round(graph.width * 0.85)}
+                y2={Math.round(graph.height * 0.85)}
+              >
+                <stop offset="0%" stopColor="#c4ff00" />
+                <stop offset="25%" stopColor="#96ff20" />
+                <stop offset="50%" stopColor="#50ff60" />
+                <stop offset="75%" stopColor="#20ffa0" />
+                <stop offset="100%" stopColor="#00ffc4" />
+              </linearGradient>
+              <linearGradient
+                id={gridId + "-working-border"}
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="25%" stopColor="#a0a0a0" />
+                <stop offset="50%" stopColor="#303030" />
+                <stop offset="75%" stopColor="#a0a0a0" />
+                <stop offset="100%" stopColor="#ffffff" />
+                <animateTransform
+                  attributeName="gradientTransform"
+                  type="rotate"
+                  from="0 0.5 0.5"
+                  to="360 0.5 0.5"
+                  dur="2.4s"
+                  repeatCount="indefinite"
+                />
+              </linearGradient>
+              {graph.edges.map((edge: any, edgeIndex: number) => {
+                const pts = edgeGradientCoords(edge.d);
+                return (
+                  <linearGradient
+                    key={edge.from + edge.to + "-grad"}
+                    id={gridId + "-edge-" + edgeIndex}
+                    gradientUnits="userSpaceOnUse"
+                    x1={pts.x1}
+                    y1={pts.y1}
+                    x2={pts.x2}
+                    y2={pts.y2}
+                  >
+                    <stop offset="0%" stopColor="#c4ff00" />
+                    <stop offset="25%" stopColor="#96ff20" />
+                    <stop offset="50%" stopColor="#50ff60" />
+                    <stop offset="75%" stopColor="#20ffa0" />
+                    <stop offset="100%" stopColor="#00ffc4" />
+                  </linearGradient>
+                );
+              })}
             </defs>
             <rect
               width="100%"
@@ -356,9 +525,14 @@ export default function Topology({
               fill={"url(#" + gridId + "-major)"}
               className="topology-grid-major"
             />
-            {graph.edges.map((edge: any) => (
+            {graph.edges.map((edge: any, edgeIndex: number) => (
               <path
                 key={edge.from + edge.to}
+                stroke={
+                  edge.stale
+                    ? undefined
+                    : "url(#" + gridId + "-edge-" + edgeIndex + ")"
+                }
                 className={
                   "topology-edge " +
                   (edge.stale ? "stale " : "") +
@@ -392,6 +566,8 @@ export default function Topology({
                       ];
               const tool = hover?.id === node.id ? hover.index : facet[node.id];
               const detail = tool !== undefined ? details[tool] : null;
+              const lines = nodeTitleLines(node);
+              const layout = nodeTitleLayout(node, lines);
               const level = [
                 "working",
                 "attention",
@@ -447,6 +623,17 @@ export default function Topology({
                     width={node.w}
                     height={node.h}
                   />
+                  {node.status === "working" && (
+                    <rect
+                      className="node-working-border"
+                      x={node.x}
+                      y={node.y}
+                      width={node.w}
+                      height={node.h}
+                      pathLength={100}
+                      stroke={`url(#${gridId}-working-border)`}
+                    />
+                  )}
                   <rect
                     className="node-rail"
                     x={node.x + 1}
@@ -464,13 +651,14 @@ export default function Topology({
                   <circle
                     className="node-status-glyph"
                     cx={node.x + node.w - 6}
-                    cy={node.y + 7}
+                    cy={node.y + 6}
                     r="2"
                     aria-hidden="true"
                   />
                   {details.map(([label], i) => (
                     <g
                       key={label}
+                      className={"node-tool" + (facet[node.id] === i ? " pinned" : "")}
                       role="button"
                       tabIndex={focusId === node.id ? 0 : -1}
                       aria-label={label.toLowerCase() + " for " + node.title}
@@ -479,13 +667,23 @@ export default function Topology({
                       onPointerLeave={() => setHover(null)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFacet({ ...facet, [node.id]: i });
+                        setFacet((prev) => {
+                          const next = { ...prev };
+                          if (next[node.id] === i) delete next[node.id];
+                          else next[node.id] = i;
+                          return next;
+                        });
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           e.stopPropagation();
-                          setFacet({ ...facet, [node.id]: i });
+                          setFacet((prev) => {
+                            const next = { ...prev };
+                            if (next[node.id] === i) delete next[node.id];
+                            else next[node.id] = i;
+                            return next;
+                          });
                         }
                       }}
                     >
@@ -499,8 +697,8 @@ export default function Topology({
                       {i === 0 ? (
                         <circle
                           className="node-tool-glyph"
-                          cx={node.x + 8}
-                          cy={node.y + ((i + 0.5) * node.h) / 3}
+                          cx={node.x + 8.5}
+                          cy={node.y + 5.0 + i * ((node.h - 10) / 2)}
                           r="2"
                         />
                       ) : i === 1 ? (
@@ -508,10 +706,10 @@ export default function Topology({
                           className="node-tool-glyph"
                           d={
                             "M" +
-                            (node.x + 5) +
+                            (node.x + 6.25) +
                             " " +
-                            (node.y + ((i + 0.5) * node.h) / 3 - 2) +
-                            "h6v4h-6z"
+                            (node.y + 5.0 + i * ((node.h - 10) / 2) - 1.55) +
+                            "h1.5l.75.75h2.25v2.35h-4.5z"
                           }
                         />
                       ) : (
@@ -519,10 +717,10 @@ export default function Topology({
                           className="node-tool-glyph"
                           d={
                             "M" +
-                            (node.x + 5) +
+                            (node.x + 5.9) +
                             " " +
-                            (node.y + ((i + 0.5) * node.h) / 3 - 2) +
-                            "h6m-6 2h6m-6 2h4"
+                            (node.y + 5.0 + i * ((node.h - 10) / 2) - 2) +
+                            "h5.2m-5.2 2h5.2m-5.2 2h3.5"
                           }
                         />
                       )}
@@ -533,46 +731,42 @@ export default function Topology({
                       <text
                         className="node-detail-label"
                         x={node.x + 22}
-                        y={node.y + 11}
+                        y={node.y + 8.2}
                       >
                         {detail[0]}
                       </text>
                       <text
                         className="node-detail-value"
                         x={node.x + 22}
-                        y={node.y + 22}
+                        y={node.y + 14.4}
                       >
                         {clip(detail[1], 16)}
                       </text>
                     </>
                   ) : (
-                    <>
-                      <text
-                        className="node-title"
-                        x={node.x + 22}
-                        y={node.y + 14}
-                      >
-                        {clip(node.title, node.kind === "session" ? 16 : 17)}
-                      </text>
-                      {activeStates.includes(node.status) && (
-                        <text
-                          className="node-state"
-                          textAnchor="end"
-                          x={node.x + node.w - 5}
-                          y={node.y + node.h - 5}
+                    <text
+                      className={`node-title ${layout.sizeClass}`}
+                      x={node.x + 22}
+                      y={layout.firstBaseline}
+                    >
+                      {lines.map((line, lineIdx) => (
+                        <tspan
+                          key={lineIdx}
+                          x={node.x + 22}
+                          dy={lineIdx === 0 ? 0 : layout.lineStep}
                         >
-                          {node.status.toUpperCase()}
-                        </text>
-                      )}
-                    </>
+                          {line}
+                        </tspan>
+                      ))}
+                    </text>
                   )}
                   {[0, 1, 2, 3].map((i) => (
                     <rect
                       key={i}
                       className={"node-signal " + (i < level ? "on" : "")}
-                      x={node.x + 22 + i * 11}
-                      y={node.y + node.h - 6}
-                      width="8"
+                      x={node.x + 22 + i * 12}
+                      y={node.y + node.h - 5.8}
+                      width="9.5"
                       height="2"
                     />
                   ))}

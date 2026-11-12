@@ -118,8 +118,8 @@ test("multi-host provider rows and sessions remain in bounds without overlap", (
   assert.ok(providers[0].y < hostNodes[0].y);
   assert.equal(providers[1].y, providers[0].y);
   assert.equal(providers[2].y, providers[0].y);
-  assert.equal(providers[1].x - providers[0].x, 246 + 24);
-  assert.equal(providers[2].x - providers[1].x, 246 + 24);
+  assert.equal(providers[1].x - providers[0].x, (74 + 160) / 2 + 24);
+  assert.equal(providers[2].x - providers[1].x, (160 + 246) / 2 + 24);
   assert.equal(firstSessions[1].y - firstSessions[0].y, 0);
   assert.equal(firstSessions[1].x - firstSessions[0].x, GRAPH_CARD_SIZE.w + 12);
   assert.ok(firstSessions.every((node) => node.y + node.h <= providers[1].y));
@@ -198,7 +198,9 @@ test("lightfield shader keeps network signals neutral and selection restrained",
     if (previousMatchMedia === undefined) delete globalThis.matchMedia;
     else globalThis.matchMedia = previousMatchMedia;
   }
-  assert.match(sources[1], /vec3 signalLight = vec3\(0\.82, 0\.86, 0\.88\)/);
+  assert.match(sources[1], /vec3 signalStart = vec3\(0\.769, 1\.0, 0\.0\)/);
+  assert.match(sources[1], /vec3 signalEnd = vec3\(0\.0, 1\.0, 0\.769\)/);
+  assert.match(sources[1], /vec3 signalLight = mix\(signalStart, signalEnd, signalMix\)/);
   assert.match(sources[1], /col \+= signalLight \* segGlow/);
   assert.match(sources[1], /col \+= signalLight \* neonFalloff\(dPulse/);
   assert.match(sources[1], /vec3 selectionLime/);

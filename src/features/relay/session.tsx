@@ -18,6 +18,91 @@ type Props = {
   run: (fn: () => any) => Promise<boolean>;
 };
 
+function formatUnifiedDiff(before?: string | null, after?: string | null) {
+  if (before != null && after != null) {
+    const a = before.split("\n");
+    const b = after.split("\n");
+    let start = 0;
+    while (start < a.length && start < b.length && a[start] === b[start]) {
+      start++;
+    }
+    let endA = a.length - 1;
+    let endB = b.length - 1;
+    while (endA >= start && endB >= start && a[endA] === b[endB]) {
+      endA--;
+      endB--;
+    }
+
+    const lines: string[] = [];
+    for (let i = 0; i < start; i++) {
+      lines.push(`  ${a[i]}`);
+    }
+
+    const midA = a.slice(start, endA + 1);
+    const midB = b.slice(start, endB + 1);
+
+    if (
+      midA.length > 0 &&
+      midB.length > 0 &&
+      midA.length <= 400 &&
+      midB.length <= 400
+    ) {
+      const m = midA.length;
+      const n = midB.length;
+      const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          if (midA[i - 1] === midB[j - 1]) {
+            dp[i][j] = dp[i - 1][j - 1] + 1;
+          } else {
+            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+          }
+        }
+      }
+      const diff: string[] = [];
+      let i = m;
+      let j = n;
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && midA[i - 1] === midB[j - 1]) {
+          diff.push(`  ${midA[i - 1]}`);
+          i--;
+          j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+          diff.push(`+ ${midB[j - 1]}`);
+          j--;
+        } else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
+          diff.push(`- ${midA[i - 1]}`);
+          i--;
+        }
+      }
+      diff.reverse();
+      lines.push(...diff);
+    } else {
+      for (const line of midA) {
+        lines.push(`- ${line}`);
+      }
+      for (const line of midB) {
+        lines.push(`+ ${line}`);
+      }
+    }
+
+    for (let i = endA + 1; i < a.length; i++) {
+      lines.push(`  ${a[i]}`);
+    }
+
+    return <pre className="diff-preview">{lines.join("\n")}</pre>;
+  }
+
+  return (
+    <>
+      <h4>Before</h4>
+      <pre>{before ?? "No before content supplied."}</pre>
+      <h4>After</h4>
+      <pre>{after ?? "No after content supplied."}</pre>
+    </>
+  );
+}
+
 function Attention({
   entry,
   live,
@@ -258,6 +343,7 @@ export function SessionInspector({
   const [tab, setTab] = useState("chat");
   const [model, setModel] = useState("");
   const [preview, setPreview] = useState<any>(null);
+  const [confirmDispose, setConfirmDispose] = useState(false);
   const detail = fleet?.session;
   const chat = fleet?.chat;
   const connected =
@@ -509,7 +595,8 @@ export function SessionInspector({
               }}
             >
               <label>
-                Message / queued turn
+                Message / queued turn{" "}
+                <small className="muted">Ctrl+Enter to queue</small>
                 <textarea
                   className="field"
                   name="prompt"
@@ -517,6 +604,12 @@ export function SessionInspector({
                   required
                   disabled={!live || !chat || !policy.allowsInput}
                   placeholder="Describe the work to perform…"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                 />
               </label>
               {models.length > 0 && (
@@ -681,18 +774,10 @@ export function SessionInspector({
                         ) : shownPreview.error ? (
                           <p role="alert">{shownPreview.error}</p>
                         ) : (
-                          <>
-                            <h4>Before</h4>
-                            <pre>
-                              {shownPreview.before ??
-                                "No before content supplied."}
-                            </pre>
-                            <h4>After</h4>
-                            <pre>
-                              {shownPreview.after ??
-                                "No after content supplied."}
-                            </pre>
-                          </>
+                          formatUnifiedDiff(
+                            shownPreview.before,
+                            shownPreview.after,
+                          )
                         )}
                       </div>
                     )}
@@ -735,21 +820,41 @@ export function SessionInspector({
               <dt>Last activity</dt>
               <dd>{when(summary?.modifiedAt)}</dd>
             </dl>
-            <Button
-              variant="ghost"
-              destructive
-              disabled={!live || !!slotError}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Dispose this AHP session? This cannot be undone.",
-                  )
-                )
-                  void run(() => fleet.disposeSession());
-              }}
-            >
-              Dispose session
-            </Button>
+            {!confirmDispose ? (
+              <Button
+                variant="ghost"
+                destructive
+                disabled={!live || !!slotError}
+                onClick={() => setConfirmDispose(true)}
+              >
+                Dispose session
+              </Button>
+            ) : (
+              <>
+                <p role="alert">
+                  Dispose this AHP session? This cannot be undone.
+                </p>
+                <div className="action-row">
+                  <Button
+                    variant="ghost"
+                    destructive
+                    disabled={!live || !!slotError}
+                    onClick={() => {
+                      setConfirmDispose(false);
+                      void run(() => fleet.disposeSession());
+                    }}
+                  >
+                    Confirm dispose
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setConfirmDispose(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
           </section>
         </TabsSubtlePanel>
       </TabsSubtle>

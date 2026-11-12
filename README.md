@@ -3,7 +3,11 @@
 AI-Relay is a fleet console for the Agent Host Protocol (AHP) 1.0.
 It shows hosts, providers, sessions, turns, approvals, and changesets.
 
-![AI-Relay demo topology](docs/demo-topology.png)
+<p align="center">
+  <video src="docs/relay-demo.mp4" autoplay loop muted playsinline width="100%" poster="docs/demo-topology.png">
+    <img src="docs/relay-demo.webp" alt="AI-Relay fleet console live topology" width="100%">
+  </video>
+</p>
 
 ## How it works
 
@@ -34,6 +38,12 @@ Stop the demo with:
 
 ```sh
 npm run demo -- --stop
+```
+
+Capture a moving demo recording (MP4 & WebP):
+
+```sh
+npm run demo:record
 ```
 
 ## Run the console

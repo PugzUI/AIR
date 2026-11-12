@@ -5,12 +5,12 @@ Wants=ahpd.service
 
 [Service]
 Type=simple
-WorkingDirectory=%h/ai-relay
-ExecStart=/usr/bin/node %h/ai-relay/src/serve.mjs
+WorkingDirectory=%h/work/Relay
+ExecStart=/usr/bin/node %h/work/Relay/src/serve.mjs
 Environment=PORT=4200
 Environment=HOST=0.0.0.0
-Environment=RELAY_DEMO_BOOTSTRAP_FILE=%h/ai-relay/.local/demo/bootstrap.json
-Environment=RELAY_DEMO_TOKEN_FILE=%h/ai-relay/.local/demo/connection-token
+Environment=RELAY_DEMO_BOOTSTRAP_FILE=%h/work/Relay/.local/demo/bootstrap.json
+Environment=RELAY_DEMO_TOKEN_FILE=%h/work/Relay/.local/demo/connection-token
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

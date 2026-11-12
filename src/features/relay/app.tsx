@@ -44,7 +44,7 @@ export default function RelayApp() {
     if (!dialog) return;
     if (drawer && !dialog.open) {
       lastFocus.current = document.activeElement as HTMLElement;
-      dialog.showModal();
+      dialog.show();
     }
     if (!drawer && dialog.open) dialog.close();
   }, [drawer]);
@@ -60,6 +60,11 @@ export default function RelayApp() {
       if (event.key === "Escape" && target === searchRef.current) {
         event.preventDefault();
         setQuery("");
+        return;
+      }
+      if (event.key === "Escape" && drawer && !shortcuts) {
+        event.preventDefault();
+        closeDrawer();
         return;
       }
       if (event.key === "Escape" && !drawer && !shortcuts) {
@@ -152,20 +157,6 @@ export default function RelayApp() {
   )?.summary;
   const selectedHost = hosts.find((host) => host.id === selected?.hostId);
   const online = hosts.filter((host) => host.state.status === "connected").length;
-  const working = sessions.filter(
-    (row) =>
-      sessionState(
-        row.summary,
-        hosts.find((host) => host.id === row.hostId)?.state.status === "connected",
-      ) === "working",
-  ).length;
-  const attention = sessions.filter(
-    (row) =>
-      sessionState(
-        row.summary,
-        hosts.find((host) => host.id === row.hostId)?.state.status === "connected",
-      ) === "attention",
-  ).length;
   const filtered = sessions.filter((row) => {
     const haystack = [
       row.hostLabel,
@@ -290,7 +281,9 @@ export default function RelayApp() {
                           aria-current={host.id === activeHost?.id ? "true" : undefined}
                           onClick={() => openHost(host)}
                         >
+                          <span className={`status-dot ${host.state.status}`} aria-hidden="true" />
                           <span className="host-nav-name">{host.label}</span>
+                          <small className="host-nav-meta">{host.state.status}</small>
                         </button>
                       </li>
                     ))}
@@ -315,6 +308,7 @@ export default function RelayApp() {
                   onClick={() => openHost(host)}
                 >
                   <Server />
+                  <span className={`status-dot ${host.state.status}`} aria-hidden="true" />
                 </button>
               ))}
             </div>
@@ -325,27 +319,6 @@ export default function RelayApp() {
             <Button variant="ghost" className="action-primary" onClick={openConnect}>
               <Plus /> Add host
             </Button>
-            <div className="relay-legend">
-              <span>
-                <span className="status-dot working" /> {working ? working + " ACTIVE" : "ACTIVE"}
-              </span>
-              <span>
-                <span className="status-dot attention" />{" "}
-                {attention ? attention + " ATTENTION" : "ATTENTION"}
-              </span>
-              <span>
-                <span className="status-dot idle" /> IDLE
-              </span>
-              <Button
-                variant="ghost"
-                className="topology-keys"
-                size="sm"
-                onClick={() => setShortcuts(true)}
-                aria-label="Keyboard shortcuts"
-              >
-                Keys <kbd aria-hidden="true">?</kbd>
-              </Button>
-            </div>
           </div>
           {connectOpen && (
             <form
@@ -495,20 +468,13 @@ export default function RelayApp() {
               onPreview={setNode}
               onControl={openNode}
               signal={fleet?.lastSignal}
+              onConnect={openConnect}
             />
-            {!hosts.length && (
-              <div className="empty-state">
-                <h2>No connected hosts</h2>
-                <p>Connect an AHP host to see its agents and sessions.</p>
-                <Button variant="ghost" className="action-primary" onClick={openConnect}>
-                  <Plus /> Connect a host
-                </Button>
-              </div>
-            )}
           </section>
           <section className="sessions-catalog">
             <div className="sessions-heading">
               <Button
+                className="catalog-toggle"
                 variant="ghost"
                 aria-expanded={catalogOpen}
                 aria-controls="session-catalog"
@@ -531,41 +497,41 @@ export default function RelayApp() {
             </div>
             {catalogOpen && (
               <div id="session-catalog" className="sessions-list">
-                {filtered.map((row) => (
-                  <button
-                    type="button"
-                    key={`${row.hostId}\0${row.summary.resource}`}
-                    onClick={() => {
-                      setCatalogOpen(false);
-                      setNode({
-                        id: `${row.hostId}\0${row.summary.resource}`,
-                        kind: "session",
-                        hostId: row.hostId,
-                        uri: row.summary.resource,
-                        title: row.summary.title || "Untitled session",
-                        provider: row.summary.provider,
-                        workspace: row.summary.workingDirectories?.[0],
-                      });
-                      openSession(row.hostId, row.summary.resource);
-                    }}
-                  >
-                    <span className="status-dot" />
-                    <span>
-                      <strong>{row.summary.title || "Untitled session"}</strong>
-                      <small>
-                        {row.hostLabel} / {row.summary.provider} ·{" "}
-                        {tail(row.summary.workingDirectories?.[0])}
-                      </small>
-                    </span>
-                    <span>
-                      {sessionState(
-                        row.summary,
-                        hosts.find((host) => host.id === row.hostId)?.state.status ===
-                          "connected",
-                      )}
-                    </span>
-                  </button>
-                ))}
+                {filtered.map((row) => {
+                  const state = sessionState(
+                    row.summary,
+                    hosts.find((host) => host.id === row.hostId)?.state.status === "connected",
+                  );
+                  return (
+                    <button
+                      type="button"
+                      key={`${row.hostId}\0${row.summary.resource}`}
+                      onClick={() => {
+                        setCatalogOpen(false);
+                        setNode({
+                          id: `${row.hostId}\0${row.summary.resource}`,
+                          kind: "session",
+                          hostId: row.hostId,
+                          uri: row.summary.resource,
+                          title: row.summary.title || "Untitled session",
+                          provider: row.summary.provider,
+                          workspace: row.summary.workingDirectories?.[0],
+                        });
+                        openSession(row.hostId, row.summary.resource);
+                      }}
+                    >
+                      <span className={`status-dot ${state}`} aria-hidden="true" />
+                      <span>
+                        <strong>{row.summary.title || "Untitled session"}</strong>
+                        <small>
+                          {row.hostLabel} / {row.summary.provider} ·{" "}
+                          {tail(row.summary.workingDirectories?.[0])}
+                        </small>
+                      </span>
+                      <span>{state}</span>
+                    </button>
+                  );
+                })}
                 {!filtered.length && (
                   <p className="muted">
                     {sessions.length ? "No matching sessions" : "No sessions"}
@@ -589,7 +555,7 @@ export default function RelayApp() {
         }}
       >
         <div className="drawer-header">
-          <strong>
+          <h2>
             {drawer === "create"
               ? "NEW SESSION"
               : drawer === "host"
@@ -599,7 +565,7 @@ export default function RelayApp() {
                   : drawer === "status"
                     ? "STATUS"
                     : "SESSION"}
-          </strong>
+          </h2>
           <Button variant="ghost" aria-label="Close details" onClick={closeDrawer} size="icon">
             <X />
           </Button>
@@ -770,22 +736,36 @@ export default function RelayApp() {
           </Button>
         </div>
         <dl>
-          <dt>
-            <kbd>/</kbd>
-          </dt>
-          <dd>Focus fleet search</dd>
-          <dt>
-            <kbd>?</kbd>
-          </dt>
-          <dd>Open keyboard controls</dd>
-          <dt>
-            <kbd>Enter</kbd>
-          </dt>
-          <dd>Open selected topology node controls</dd>
-          <dt>
-            <kbd>Esc</kbd>
-          </dt>
-          <dd>Close a dialog, clear selection or search</dd>
+          <div>
+            <dt>
+              <kbd>/</kbd>
+            </dt>
+            <dd>Focus fleet search</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>?</kbd>
+            </dt>
+            <dd>Open keyboard controls</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>Enter</kbd>
+            </dt>
+            <dd>Open selected topology node controls</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>Ctrl/⌘+Enter</kbd>
+            </dt>
+            <dd>Queue turn in composer</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>Esc</kbd>
+            </dt>
+            <dd>Close a dialog, clear selection or search</dd>
+          </div>
         </dl>
       </dialog>
     </div>

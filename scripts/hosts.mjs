@@ -103,6 +103,7 @@ async function seedHost(multi, host) {
     const samples = [
       [seeded[2], "Check approval once."],
       [seeded[1], "[demo:hold] Keep this turn active for the topology."],
+      [seeded[4], "[demo:hold] Coordinating subagent execution plan."],
     ];
     for (const [item, prompt] of samples) {
       const session = await multi.subscribe(id, item.uri);
@@ -124,6 +125,34 @@ async function seedHost(multi, host) {
       multi.dispatch(id, chat, {
         type: "chat/pendingMessageSet", kind: "queued", id: randomUUID(),
         message: { text: "Transcript fixture step " + index, origin: { kind: "user" } },
+      });
+    }
+  } else if (id === "secondary") {
+    // Active working agents and attention items on the secondary host.
+    const samples = [
+      [seeded[0], "[demo:hold] Compiling changesets and lint checks."],
+      [seeded[2], "[demo:hold] Running integration test sweep."],
+      [seeded[6], "Check approval once."],
+    ];
+    for (const [item, prompt] of samples) {
+      const session = await multi.subscribe(id, item.uri);
+      const chat = session.snapshot?.state?.defaultChat;
+      if (!chat) throw Error("Demo session has no host-advertised chat: " + item.title);
+      await multi.subscribe(id, chat);
+      multi.dispatch(id, chat, {
+        type: "chat/pendingMessageSet", kind: "queued", id: randomUUID(),
+        message: { text: prompt, origin: { kind: "user" } },
+      });
+    }
+    const sample = seeded[4];
+    const session = await multi.subscribe(id, sample.uri);
+    const chat = session.snapshot?.state?.defaultChat;
+    if (!chat) throw Error("Transcript demo session has no chat");
+    await multi.subscribe(id, chat);
+    for (let index = 1; index <= 5; index++) {
+      multi.dispatch(id, chat, {
+        type: "chat/pendingMessageSet", kind: "queued", id: randomUUID(),
+        message: { text: "Secondary verification step " + index, origin: { kind: "user" } },
       });
     }
   }

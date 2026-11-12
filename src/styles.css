@@ -16,8 +16,8 @@
 
 :root {
   color-scheme: dark;
-  --c-bg: #000000;
-  --c-bg-alt: #070707;
+  --c-bg: #070707;
+  --c-bg-alt: #0c0c0c;
   --c-surface: #0f0f0f;
   --c-hover: #1c1c1c;
   --c-active: #212121;
@@ -26,6 +26,7 @@
   --c-secondary: #c2c2c2;
   --c-muted: #9a9a9a;
   --c-accent: #c4ff00;
+  --c-on-accent: #000000;
   --c-danger: #f43434;
   --c-warning: #ffc400;
   --c-data-gold: #c9a227;
@@ -260,10 +261,23 @@
   overflow-wrap: anywhere;
 }
 
+.host-nav-meta {
+  margin-left: auto;
+  color: var(--c-muted);
+  font: 0.6875rem var(--f-mono);
+}
+
 .host-rail:not(.host-rail-expanded) .host-nav-item {
+  position: relative;
   justify-content: center;
   width: 3.5rem;
-  min-height: 2rem;
+  min-height: 2.75rem;
+}
+
+.host-rail:not(.host-rail-expanded) .host-nav-item .status-dot {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
 }
 
 .host-nav-item svg,
@@ -406,6 +420,61 @@
   padding-right: 1.75rem;
 }
 
+.topology-zoom-controls {
+  position: sticky;
+  top: 0.75rem;
+  float: right;
+  margin-right: 1rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  background: var(--c-bg-alt);
+  border: 1px solid var(--c-sep);
+  font: 0.6875rem var(--f-mono);
+}
+
+.topology-zoom-btn,
+.topology-fit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  width: 1.5rem;
+  min-height: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-secondary);
+  font: inherit;
+}
+
+.topology-zoom-btn:hover,
+.topology-fit-btn:hover {
+  color: var(--c-fg);
+  background: var(--c-hover);
+}
+
+.topology-zoom-readout {
+  min-width: 2.1rem;
+  padding: 0 0.15rem;
+  text-align: center;
+  color: var(--c-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.topology-fit-btn {
+  border-left: 1px solid var(--c-sep);
+  color: var(--c-accent);
+}
+
+.topology-fit-btn .topology-fit-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
 .topology-viewport {
   position: absolute;
   inset: 0;
@@ -438,6 +507,8 @@
   width: 100%;
   height: 100%;
   overflow: visible;
+  text-rendering: geometricPrecision;
+  shape-rendering: geometricPrecision;
 }
 
 .topology-grid {
@@ -452,10 +523,9 @@
 
 .topology-edge {
   fill: none;
-  stroke: var(--c-secondary);
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
-  opacity: 0.45;
+  opacity: 0.67;
   transition: opacity 140ms var(--motion-ease-out);
 }
 
@@ -491,9 +561,22 @@
 
 .node-frame {
   fill: var(--c-bg-alt);
-  stroke: var(--c-sep);
+  stroke: #0c0c0c;
   stroke-width: 1;
-  transition: stroke 140ms var(--motion-ease-out), stroke-width 140ms var(--motion-ease-out);
+  transition: stroke 140ms var(--motion-ease-out);
+}
+
+.node-working-border {
+  fill: none;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node-working-border {
+    stroke: #c0c0c0;
+  }
 }
 
 .topology-node:hover .node-frame,
@@ -504,7 +587,7 @@
 
 .topology-node:focus-visible .node-frame {
   stroke: var(--c-accent);
-  stroke-width: 2;
+  stroke-width: 1;
 }
 
 .node-rail {
@@ -513,14 +596,29 @@
 }
 
 .node-divider {
-  stroke: var(--network-color, var(--c-sep));
+  stroke: #0c0c0c;
   stroke-opacity: 0.4;
 }
 
 .node-title {
   fill: var(--c-fg);
-  font: 600 10px var(--f-sans);
+  font: 600 9px var(--f-sans);
   letter-spacing: 0.01em;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.node-title.title-short {
+  font-size: 9px;
+}
+
+.node-title.title-medium {
+  font-size: 6.5px;
+}
+
+.node-title.title-long {
+  font-size: 6px;
 }
 
 .node-state {
@@ -531,13 +629,14 @@
 
 .node-detail-label {
   fill: var(--c-muted);
-  font: 5.5px var(--f-mono);
+  font: 600 5.5px var(--f-mono);
   letter-spacing: 0.05em;
 }
 
 .node-detail-value {
   fill: var(--c-fg);
-  font: 500 8px var(--f-mono);
+  font: 600 6px var(--f-sans);
+  letter-spacing: 0.01em;
 }
 
 .node-status-glyph {
@@ -560,19 +659,34 @@
 
 .node-tool-hit {
   fill: transparent;
+  stroke: none;
+  pointer-events: all;
 }
 
-.node-tool-glyph {
+.node-tool:hover .node-tool-hit,
+.node-tool.pinned .node-tool-hit,
+.node-tool:focus-visible .node-tool-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.node-tool-glyph,
+.node-tool-icon {
   fill: none;
-  stroke: var(--network-color, var(--c-muted));
-  stroke-width: 0.8;
-  stroke-opacity: 0.9;
+  stroke: var(--c-muted);
+  stroke-width: 1.1;
+  stroke-opacity: 0.92;
   pointer-events: none;
+  transition: stroke 120ms ease;
 }
 
-.node-tool-hit:hover {
-  fill: var(--network-color, var(--c-active));
-  fill-opacity: 0.14;
+.node-tool:hover .node-tool-glyph,
+.node-tool.pinned .node-tool-glyph,
+.node-tool:focus-visible .node-tool-glyph,
+.node-tool:hover .node-tool-icon,
+.node-tool.pinned .node-tool-icon,
+.node-tool:focus-visible .node-tool-icon {
+  stroke: var(--c-accent);
 }
 
 .node-signal {
@@ -646,6 +760,17 @@
   font-size: 0.8125rem;
 }
 
+.empty-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  font: 500 0.875rem var(--f-sans);
+  border: 1px solid var(--c-sep);
+}
+
 .topology-overflow {
   padding: 1rem;
   font: 0.75rem var(--f-mono);
@@ -697,6 +822,7 @@
 
 .node-preview-details>div {
   display: flex;
+  align-items: center;
   gap: 0.375rem;
   min-width: 0;
   max-width: 100%;
@@ -751,6 +877,12 @@
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
   min-height: 3.5rem;
+}
+
+.sessions-heading .catalog-toggle {
+  position: relative;
+  left: -10px;
+  top: 1px;
 }
 
 .sessions-list {
@@ -899,10 +1031,20 @@ input[type="radio"] {
   accent-color: var(--c-accent);
 }
 
+.config-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .field-row {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
+}
+
+.field-row > span {
+  display: grid;
+  gap: 0.25rem;
 }
 
 .field-row input {
@@ -976,6 +1118,36 @@ input[type="radio"] {
   background: var(--c-danger);
 }
 
+.status-shape {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  fill: currentColor;
+  color: var(--c-muted);
+}
+
+.status-shape.connected,
+.status-shape.idle {
+  color: var(--c-secondary);
+}
+
+.status-shape.working {
+  color: var(--c-accent);
+}
+
+.status-shape.attention,
+.status-shape.connecting,
+.status-shape.reconnecting {
+  color: var(--c-warning);
+}
+
+.status-shape.error,
+.status-shape.failed,
+.status-shape.disconnected {
+  color: var(--c-danger);
+}
+
 .session-message {
   padding-block: 1rem;
   border-bottom: 1px solid var(--c-sep);
@@ -1009,7 +1181,7 @@ input[type="radio"] {
   gap: 0.75rem;
   align-items: flex-start;
   padding: 1rem;
-  border-left: 2px solid var(--c-danger);
+  border-left: 1px solid var(--c-danger);
   background: var(--c-bg-alt);
   overflow-wrap: anywhere;
 }
@@ -1253,17 +1425,6 @@ input[type="radio"] {
   outline-offset: -2px;
 }
 
-.topology-stage>.empty-state {
-  position: absolute;
-  inset: auto 1rem 2rem;
-  text-align: center;
-}
-
-.topology-stage>.empty-state h2,
-.topology-stage>.empty-state p {
-  display: none;
-}
-
 @media (max-width: 760px) {
   .relay-header {
     align-items: center;
@@ -1311,24 +1472,24 @@ input[type="radio"] {
   .preview-close,
   .preview-action,
   .host-nav-item {
-    min-height: 2rem;
+    min-height: 2.75rem;
   }
 
   .preview-close {
-    min-width: 2rem;
+    min-width: 2.75rem;
   }
 
   .topology-search input:not([type="checkbox"]):not([type="radio"]) {
-    min-height: 2rem;
-    height: 2rem;
+    min-height: 2.75rem;
+    height: 2.75rem;
   }
 
   .topology-search>button {
-    min-width: 2rem;
-    min-height: 2rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 
   .topology-search:has(> button) input:not([type="checkbox"]):not([type="radio"]) {
-    padding-right: 2rem;
+    padding-right: 2.75rem;
   }
 }
